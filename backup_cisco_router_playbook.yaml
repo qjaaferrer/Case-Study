@@ -1,0 +1,95 @@
+---
+- name: CASE STUDY CONFIGURATION
+  hosts: CSR1kv
+  gather_facts: false
+  connection: local
+
+  tasks:
+    - name: Updating Port int gigabitethernet1
+      ios_config:
+        lines:
+          - description - Config by Ansible
+        parents: interface GigabitEthernet1
+    
+    - name: Setting up Default OSPF
+      ios_config:
+        lines:
+          - router-id 192.168.56.102
+        parents: router ospf 100
+
+    - name: Configuring NEW OSPF network
+      ios_config:
+        lines:
+          - router-id 1.1.1.1
+          - network 192.168.56.0 0.0.0.255 area 0
+        parents: router ospf 1
+
+    - name: Ensuring SNMP strings are present
+      ios_config:
+        commands:
+          - snmp-server community ansible-public RO
+          - snmp-server community ansible-private RW
+
+      
+    - name: DISPLAYING THE RUNNING-CONFIG
+      ios_command:
+        commands:
+          - show running-config
+      register: config
+
+    - name: SAVE OUTPUT to ./backups/
+      copy:
+        content: "{{ config.stdout[0] }}"
+        dest: "backups/show_run_{{ inventory_hostname }}.txt"
+
+    - name: Test Ping CSR1kv
+      ios_ping:
+        dest: 192.168.56.102
+
+    - name: Test Ping CSR1kv to DEVASC
+      ios_ping:
+        dest: 192.168.56.104
+    
+    #Change ACL configuration and compare before and after configs using 
+    - name: collect config (before)
+      ios_command:
+        commands:
+          - show run
+      register: result_before
+
+    - name: load new acl into device
+      ios_config:
+        lines:
+          - permit ip host 192.168.56.102 any
+          - permit ip host 192.168.56.103 any
+          - permit ip host 192.168.56.105 any
+        parents: ip access-list extended test
+        save_when: modified
+
+    #Testing Pyats in Ansible
+    - name: Testing pyats collect config (after)
+      ios_command:
+        commands:
+          - show run
+      register: result_after
+
+    - name: Changing Ipv6 Address for Pyats 1 /64
+      ios_config:
+        lines:
+          - int gig 1
+          - ipv6 address 2001:db8:acad:56::101/64
+
+    - name: Changing Ipv6 Address for Pyats Link-Local
+      ios_config:
+        lines:
+          - int gig 1
+          - ipv6 address fe80::56:1 link-local
+
+  vars:
+    exclude_list:
+      - (^Using.*)
+      - (Building.*)
+      - (Current.*)
+      - (crypto pki certificate chain.*)   
+      
+    
